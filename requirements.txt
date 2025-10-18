@@ -1,0 +1,10 @@
+Flask
+flask-cors
+gunicorn
+numpy
+PyMuPDF
+python-docx
+mammoth
+sentence-transformers
+faiss-cpu
+openai
