@@ -1,21 +1,22 @@
 FROM python:3.11-slim
 
-# (Optional) system deps for OCR/audio (uncomment only if you need them)
-# RUN apt-get update && apt-get install -y --no-install-recommends \
-#     tesseract-ocr ffmpeg && \
-#     rm -rf /var/lib/apt/lists/*
+# Keep Python lean & logs unbuffered
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-WORKDIR /app
-
-# Install Python deps first (better build cache)
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-
+# System deps for OCR/audio
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
-# (Optional) pre-download the embedding model to speed up first run
+WORKDIR /app
+
+# Python deps first (uses cache better)
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# (Optional) pre-cache the embedding model
 RUN python - <<'PY'
 from sentence_transformers import SentenceTransformer
 SentenceTransformer('intfloat/e5-small-v2')
@@ -25,7 +26,9 @@ PY
 # Copy app code
 COPY . ./
 
-# Hugging Face Spaces exposes $PORT
+# Spaces sets $PORT
 ENV PORT=7860
-# CMD ["gunicorn", "-b", "0.0.0.0:7860", "main:app"]
-CMD ["bash","-lc","gunicorn -b 0.0.0.0:$PORT main:app"]
+EXPOSE 7860
+
+# Gunicorn entrypoint
+CMD ["bash","-lc","exec gunicorn main:app -b 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 180"]
