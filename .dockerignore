@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.ingested_media/
+ingested_media/
+index_store/
+rag_local.db
+.git/
+.gitignore
+.env
