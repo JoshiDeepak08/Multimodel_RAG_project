@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Multimodal RAG Console</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8',
+              500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81'
+            },
+          },
+          boxShadow: {
+            soft: '0 10px 25px rgba(0,0,0,0.08)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root { color-scheme: light dark; }
+    .glass { backdrop-filter: blur(10px); background-color: rgba(255,255,255,0.6); }
+    @media (prefers-color-scheme: dark) {
+      .glass { background-color: rgba(17, 24, 39, 0.6); }
+    }
+    .fade-enter { opacity: 0; transform: translateY(6px); }
+    .fade-enter-active { opacity: 1; transform: translateY(0); transition: all .25s ease; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-100">
+  <header class="sticky top-0 z-30 border-b border-slate-200/50 dark:border-slate-700/60 bg-white/70 dark:bg-slate-900/60 backdrop-blur">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Multimodal <span class="text-brand-500">RAG</span> Console</h1>
+      <nav class="flex items-center gap-2">
+        <button id="btnListDocs" class="px-3 py-2 rounded-lg text-sm bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">Refresh Docs</button>
+        <a href="/" class="px-3 py-2 rounded-lg text-sm bg-brand-600 hover:bg-brand-700 text-white">Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <!-- Grid: Ingest / Build / Query -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Upload / Ingest -->
+      <section class="lg:col-span-1">
+        <div class="glass shadow-soft rounded-2xl p-5">
+          <h2 class="text-lg font-semibold mb-2">1) Ingest Files</h2>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">PDF, DOC/DOCX/TXT, images (PNG/JPG), and audio (MP3/WAV/M4A/OGG/FLAC/WebM).</p>
+
+          <form id="uploadForm" class="space-y-3" onsubmit="return false;">
+            <label for="fileInput" class="block">
+              <div id="dropZone" class="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:border-brand-400 border-slate-300 dark:border-slate-600">
+                <input id="fileInput" type="file" name="file" class="hidden" />
+                <div class="text-sm">Drag & drop a file here, or <span class="text-brand-600 font-medium">browse</span></div>
+              </div>
+            </label>
+            <div class="flex gap-2">
+              <button id="btnUpload" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl">Upload & Ingest</button>
+              <button id="btnClearUpload" type="button" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800">Clear</button>
+            </div>
+          </form>
+
+          <div id="uploadStatus" class="mt-3 text-sm"></div>
+        </div>
+      </section>
+
+      <!-- Build Index -->
+      <section class="lg:col-span-1">
+        <div class="glass shadow-soft rounded-2xl p-5 h-full flex flex-col">
+          <h2 class="text-lg font-semibold mb-2">2) Build / Rebuild Index</h2>
+          <p class="text-sm text-slate-500 dark:text-slate-400">Embeds text (incl. audio transcripts) with e5-small and writes a FAISS index.</p>
+          <button id="btnBuildIndex" class="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl">Build Index</button>
+          <div id="buildStatus" class="mt-3 text-sm"></div>
+        </div>
+      </section>
+
+      <!-- Query -->
+      <section class="lg:col-span-1">
+        <div class="glass shadow-soft rounded-2xl p-5 h-full flex flex-col">
+          <h2 class="text-lg font-semibold mb-2">3) Ask</h2>
+          <div class="flex gap-2">
+            <input id="queryInput" type="text" placeholder="Ask anything about your ingested data…" class="flex-1 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 focus:outline-none">
+            <button id="micBtn" title="Voice input" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800">🎙️</button>
+            <button id="btnQuery" class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl">Search</button>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">Endpoint returns top-1 result. Response mirrors <code>hit.text</code> in <code>summary</code>.</p>
+          <div id="queryStatus" class="mt-3 text-sm"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Results / Docs -->
+    <section class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2">
+        <div class="glass shadow-soft rounded-2xl p-5">
+          <h3 class="text-lg font-semibold mb-3">Answer</h3>
+          <div id="answerBox" class="min-h-[120px] whitespace-pre-wrap text-sm leading-relaxed"></div>
+          <div id="sourceBox" class="mt-4"></div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-1">
+        <div class="glass shadow-soft rounded-2xl p-5">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-semibold">Documents</h3>
+            <button id="btnListDocs2" class="text-sm px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">Refresh</button>
+          </div>
+          <div id="docsList" class="space-y-2 text-sm"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 hidden px-4 py-2 rounded-xl bg-slate-900 text-white shadow-soft"></div>
+
+  <script>
+    // -------- Helpers --------
+    const toast = (msg, ms=2200) => {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), ms);
+    };
+
+    const setStatus = (el, msg, ok=true) => {
+      el.innerHTML = `<div class="fade-enter ${ok ? 'text-emerald-600' : 'text-rose-600'}">${msg}</div>`;
+      requestAnimationFrame(() => el.firstElementChild?.classList.add('fade-enter-active'));
+    };
+
+    const prettyTime = (iso) => new Date(iso).toLocaleString();
+
+    // -------- Upload --------
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const btnUpload = document.getElementById('btnUpload');
+    const btnClearUpload = document.getElementById('btnClearUpload');
+    const uploadStatus = document.getElementById('uploadStatus');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-brand-500'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-brand-500'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault(); dropZone.classList.remove('border-brand-500');
+      if (e.dataTransfer.files?.length) { fileInput.files = e.dataTransfer.files; }
+    });
+
+    btnClearUpload.addEventListener('click', () => { fileInput.value = ''; setStatus(uploadStatus, 'Cleared.', true); });
+
+    btnUpload.addEventListener('click', async () => {
+      if (!fileInput.files || !fileInput.files[0]) { toast('Choose a file first'); return; }
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+
+      setStatus(uploadStatus, 'Uploading…');
+      try {
+        const res = await fetch('/api/upload', { method:'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) { throw new Error(data.error || 'Upload failed'); }
+
+        if (data.status === 'exists') {
+          setStatus(uploadStatus, `File already ingested (hash: ${data.file_hash.slice(0,8)}…)`, true);
+        } else if (data.status === 'ingested') {
+          setStatus(uploadStatus, `Ingested ✓ (doc #${data.doc_id})`, true);
+        } else {
+          setStatus(uploadStatus, JSON.stringify(data), true);
+        }
+        listDocs();
+      } catch (err) {
+        setStatus(uploadStatus, err.message || String(err), false);
+      }
+    });
+
+    // -------- Build Index --------
+    const btnBuildIndex = document.getElementById('btnBuildIndex');
+    const buildStatus = document.getElementById('buildStatus');
+
+    btnBuildIndex.addEventListener('click', async () => {
+      setStatus(buildStatus, 'Building FAISS index… this may take a bit.');
+      try {
+        const res = await fetch('/api/build_index', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'built') {
+          setStatus(buildStatus, `Index built ✓ — ${data.num_pieces} chunks indexed.`, true);
+          toast('Index built');
+        } else if (data.status === 'no_text') {
+          setStatus(buildStatus, 'No text to index. Ingest documents first.', false);
+        } else {
+          setStatus(buildStatus, JSON.stringify(data), true);
+        }
+      } catch (err) {
+        setStatus(buildStatus, err.message || String(err), false);
+      }
+    });
+
+    // -------- Query --------
+    const queryInput = document.getElementById('queryInput');
+    const btnQuery = document.getElementById('btnQuery');
+    const queryStatus = document.getElementById('queryStatus');
+    const answerBox = document.getElementById('answerBox');
+    const sourceBox = document.getElementById('sourceBox');
+
+    async function runQuery() {
+      const q = queryInput.value.trim();
+      if (!q) { toast('Type a question'); return; }
+      setStatus(queryStatus, 'Searching…');
+      answerBox.textContent = ''; sourceBox.innerHTML = '';
+
+      try {
+        const res = await fetch('/api/query', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Query failed');
+
+        if (!data.hits || data.hits.length === 0) {
+          setStatus(queryStatus, 'No match found.', false);
+          return;
+        }
+
+        const hit = data.hits[0];
+        setStatus(queryStatus, 'Done ✓', true);
+        answerBox.textContent = (data.summary || '').trim();
+
+        // Source card
+        const src = document.createElement('div');
+        src.className = 'mt-3 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs';
+        src.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="font-medium">Source</div>
+            <div class="text-slate-500">doc #${hit.document_id}</div>
+          </div>
+          <div class="mt-1">${hit.file_name ? hit.file_name : ''}</div>
+          ${hit.file_url ? `<a class="inline-block mt-2 underline" href="${hit.file_url}" target="_blank" rel="noopener">Open file</a>` : ''}
+        `;
+        sourceBox.appendChild(src);
+      } catch (err) {
+        setStatus(queryStatus, err.message || String(err), false);
+      }
+    }
+
+    btnQuery.addEventListener('click', runQuery);
+    queryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runQuery(); });
+
+    // Optional: voice input (Web Speech API)
+    const micBtn = document.getElementById('micBtn');
+    let recognition = null; let listening = false;
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.lang = 'en-IN';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      recognition.onresult = (e) => {
+        const txt = e.results[0][0].transcript;
+        queryInput.value = txt;
+        toast('Voice captured');
+      };
+      recognition.onend = () => { listening = false; micBtn.textContent = '🎙️'; };
+    } else {
+      micBtn.classList.add('opacity-50');
+      micBtn.title = 'Voice input not supported on this browser';
+    }
+
+    micBtn.addEventListener('click', () => {
+      if (!recognition) return;
+      if (!listening) { recognition.start(); listening = true; micBtn.textContent = '🛑'; }
+      else { recognition.stop(); listening = false; micBtn.textContent = '🎙️'; }
+    });
+
+    // -------- Docs list --------
+    const docsList = document.getElementById('docsList');
+    async function listDocs() {
+      docsList.innerHTML = '<div class="text-slate-500 text-sm">Loading…</div>';
+      try {
+        const res = await fetch('/api/list_docs');
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error('Unexpected response');
+        if (!data.length) { docsList.innerHTML = '<div class="text-slate-500 text-sm">No documents yet.</div>'; return; }
+        docsList.innerHTML = '';
+        data.forEach(d => {
+          const a = document.createElement('a');
+          a.href = d.url; a.target = '_blank'; a.rel = 'noopener';
+          a.className = 'block p-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700';
+          a.innerHTML = `
+            <div class="font-medium truncate">${d.file_name}</div>
+            <div class="text-xs text-slate-500">${d.file_type} • ${d.created_at ? prettyTime(d.created_at) : ''}</div>
+          `;
+          docsList.appendChild(a);
+        });
+      } catch (err) {
+        docsList.innerHTML = `<div class="text-rose-600 text-sm">${err.message || err}</div>`;
+      }
+    }
+
+    // Header buttons
+    document.getElementById('btnListDocs').addEventListener('click', listDocs);
+    document.getElementById('btnListDocs2').addEventListener('click', listDocs);
+
+    // Initial load
+    listDocs();
+  </script>
+</body>
+</html>
